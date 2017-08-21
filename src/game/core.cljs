@@ -49,7 +49,8 @@
 (defn init-state!
   "Set the initial state of the game."
   []
-  (reset! state {:next-piece nil
+  (reset! state {:agent nil
+                 :next-piece nil
                  :piece nil
                  :position nil
                  :board empty-board
@@ -150,6 +151,107 @@
         (recur new-board)))))
 
 ;;------------------------------------------------------------
+;; Agent Decision
+;;------------------------------------------------------------
+
+(defn new-board->point-value
+  [new-board]
+  ;; KATA ENTRY POINT
+
+  ;; TO RUN ON YOUR MACHINE
+  ;; Install Leiningen
+  ;; Run lein figwheel dev.
+  ;; Open http://localhost:3449.
+
+  ;; KATA INSTRUCTIONS
+  ;; The scope of this kata is to write a function that inputs a tetris board (representation below),
+  ;; returns a point value (integer) of the desireability of that board.
+  ;; We will run the agents on friday and the person who gets the highest POINTS wins (maybe over 3 runs)
+  ;; There are some built in helper functions that might help you evaluate a boards value
+    ;; get-filled-row-indices
+    ;; get-points
+
+  ;; SUPPORTING LOGIC
+  ;; Every time a piece is spawned, set-target-location! is called
+  ;; The new piece is iteratively translated and rotatated to all locations that it can fit
+  ;; A new board is then created for each of those locations and passed to this function
+  ;; The target-position for the highest point value will be set into the global state
+  ;; An agent contoller (below) will then move the new piece accordingly to put in its location
+
+  ;; BONUS POINTS
+  ;; The agent only takes into account the current piece, not the next piece
+  ;; Next piece is in global state and could be an input for every move
+
+  ;; Board representation
+  ;; [[0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 0 0]
+  ;;  [0 0 0 0 0 0 0 0 T4 0]
+  ;;  [0 0 0 0 0 0 0 T2 T13 0]
+  ;;  [0 0 0 0 0 0 0 0 T1 0]
+  ;;  [0 0 T0 Z2 Z8 0 I2 I10 I10 I8]
+  ;;  [J0 S0 T0 L2 L10 L8 T2 T10 T8 0]
+  ;;  [0 Z0 S0 T0 J0 0 I0 J0 O2 O8]]
+
+  ;; Crude agent function is written below
+  ;; DELETE AND REPLACE WITH YOUR OWN
+  (->> new-board
+       (map-indexed
+        (fn [i row]
+          (* i
+             (->> row
+                  (filter #(not (zero? %)))
+                  (count)))))
+       (apply +)))
+
+(defn get-all-possible-boards
+  []
+  (let [[x y] (:position @state)
+        piece (:piece @state)
+        board (:board @state)]
+    (->> (range -2 12)
+         (mapcat
+          (fn [prospective-x]
+            (->> (range 4)
+                 (map
+                  (fn [prospective-r]
+                    (let [rotated-piece
+                          (loop [p piece
+                                 n 0]
+                            (if (< n prospective-r)
+                              (recur (rotate-piece p) (inc n))
+                              p))
+                          prospective-y (get-drop-pos rotated-piece prospective-x y board)]
+                      (when (piece-fits? rotated-piece prospective-x prospective-y board)
+                        {:prospective-x prospective-x
+                         :prospective-r prospective-r
+                         :new-board (write-piece-to-board rotated-piece prospective-x prospective-y board)})))))))
+         (filter some?)
+         (map #(assoc % :point-value (new-board->point-value (:new-board %)))))))
+
+(defn set-target-position!
+  []
+  (let [board-values (get-all-possible-boards)
+        decision (->> board-values
+                      (sort-by :point-value)
+                      (last))]
+    (swap! state assoc :target-position {:target-x (:prospective-x decision)
+                                         :target-r (:prospective-r decision)})))
+
+;;------------------------------------------------------------
 ;; Game-driven STATE CHANGES
 ;;------------------------------------------------------------
 
@@ -159,6 +261,7 @@
   (go
     (doseq [y (reverse (range n-rows))]
       (<! (timeout 10))
+      (swap! state assoc :agent false)
       (swap! state assoc-in [:board y] (game-over-row)))))
 
 (defn spawn-piece!
@@ -167,6 +270,7 @@
   (swap! state assoc :piece piece
                      :position start-position)
 
+  (set-target-position!)
   (go-go-gravity!))
 
 (defn try-spawn-piece!
@@ -237,13 +341,13 @@
         ; blink n times
         (doseq [i (range 3)]
           (swap! state assoc :board flashed-board)
-          (<! (timeout 170))
+          (<! (timeout 10))
           (swap! state assoc :board board)
-          (<! (timeout 170)))
+          (<! (timeout 10)))
 
         ; clear rows to create a gap, and pause
         (swap! state assoc :board cleared-board)
-        (<! (timeout 220))
+        (<! (timeout 10))
 
         ; finally collapse
         (collapse-rows! rows)))))
@@ -256,6 +360,7 @@
         board (:board @state)
         new-board (write-piece-to-board piece x y board)]
     (swap! state assoc :board new-board
+                       :target-position nil
                        :piece nil
                        :soft-drop false) ; reset soft drop
     (stop-gravity!)
@@ -378,12 +483,59 @@
                    :p (toggle-pause-game!)
                    nil))]
 
-
     ; Add key events
     (.addEventListener js/window "keydown" key-down)
     (.addEventListener js/window "keyup" key-up)))
 
+;;------------------------------------------------------------
+;; Agent Controller
+;;------------------------------------------------------------
 
+(defn left!
+  []
+  (put! move-left-chan true)
+  (put! move-left-chan false))
+
+(defn right!
+  []
+  (put! move-right-chan true)
+  (put! move-right-chan false))
+
+(defn rotate!
+  []
+  (try-rotate!))
+
+(defn make-decision!
+  []
+  (let [{:keys [r]} (:piece @state)
+        [x _] (:position @state)
+        {:keys [target-x target-r]} (:target-position @state)]
+     (cond
+      (and (some? r) (< r target-r))
+      (rotate!)
+
+      (> x target-x)
+      (left!)
+
+      (< x target-x)
+      (right!)
+
+      (and (or (= r target-r)
+               (nil? r))
+           (= x target-x))
+      (hard-drop!))))
+
+(defn start-agent!
+  []
+  (swap! state assoc :agent true)
+  (let [agent-chan (chan)]
+    (go-loop []
+      (let [speed (grav-speed (:level @state) (:soft-drop @state))
+            agent-speed (/ speed 10)
+            [_ c] (alts! [(timeout agent-speed) stop-grav])]
+        (when (:agent @state)
+          (make-decision!)
+          (recur))))))
 
 ;;------------------------------------------------------------
 ;; Entry Point
@@ -400,10 +552,11 @@
 
   (size-canvas! "game-canvas" empty-board cell-size rows-cutoff)
   (size-canvas! "next-canvas" (next-piece-board) cell-size)
-
   (try-spawn-piece!)
-  (add-key-events)
   (go-go-draw!)
+
+  (start-agent!)
+  ;; (add-key-events)
 
   (display-points!))
 

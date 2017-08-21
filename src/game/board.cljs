@@ -4,105 +4,105 @@
 ;; Pieces.
 ;;------------------------------------------------------------
 
-; The available pieces resemble letters I,L,J,S,Z,O,T.
-; Each piece structure is stored in :coords as [x y a].
-; The "a" component of :coords stands for adjacency,
-; which is a number with bit flags UP, RIGHT, DOWN, LEFT.
+;; The available pieces resemble letters I,L,J,S,Z,O,T.
+;; Each piece structure is stored in :coords as [x y a].
+;; The "a" component of :coords stands for adjacency,
+;; which is a number with bit flags UP, RIGHT, DOWN, LEFT.;
+;; For example, the coords for the J piece:
+;;
+;;       ********
+;;       * X=-1 *
+;;       * Y=-1 *
+;;       *      *
+;;       **********************
+;;       * X=-1 * X=0  * X=1  *
+;;       * Y=0  * Y=0  * Y=0  *
+;;       *      *      *      *
+;;       **********************
+;;
+;; We also need to encode "adjacency" information so we
+;; can graphically connect tiles of the same piece.
+;; These codes require explanation:
+;;
+;;       ********
+;;       *      *
+;;       * A=4  *
+;;       *      *
+;;       **********************
+;;       *      *      *      *
+;;       * A=3  * A=10 * A=8  *
+;;       *      *      *      *
+;;       **********************
+;;
+;; Adjacency codes are 4-bit numbers (for good reason),
+;; with each bit indicating adjacency along its respective direction:
+;;
+;;     UP  RIGHT  DOWN  LEFT -> binary -> CODE (decimal)
+;;     -     -     -     -      0000      0
+;;     X     -     -     -      0001      1
+;;     -     X     -     -      0010      2
+;;     X     X     -     -      0011      3  <-- shown in above example
+;;     -     -     X     -      0100      4  <-- shown in above example
+;;     X     -     X     -      0101      5
+;;     -     X     X     -      0110      6
+;;     X     X     X     -      0111      7
+;;     -     -     -     X      1000      8  <-- shown in above example
+;;     X     -     -     X      1001      9
+;;     -     X     -     X      1010      10 <-- shown in above example
+;;     X     X     -     X      1011      11
+;;     -     -     X     X      1100      12
+;;     X     -     X     X      1101      13
+;;     -     X     X     X      1110      14
+;;     X     X     X     X      1111      15 (not possible in tetris)
+;;
+;; The revelation here is that SIMPLE ROTATION of the piece
+;; is achieved by applying this function over each coordinate:
+;;
+;;     Rotate( [X Y A] )  -->   [ -Y X (4 bit rotate of A) ]
 
-; For example, the coords for the J piece:
-;
-;       ********
-;       * X=-1 *
-;       * Y=-1 *
-;       *      *
-;       **********************
-;       * X=-1 * X=0  * X=1  *
-;       * Y=0  * Y=0  * Y=0  *
-;       *      *      *      *
-;       **********************
-;
-; We also need to encode "adjacency" information so we
-; can graphically connect tiles of the same piece.
-; These codes require explanation:
-;
-;       ********
-;       *      *
-;       * A=4  *
-;       *      *
-;       **********************
-;       *      *      *      *
-;       * A=3  * A=10 * A=8  *
-;       *      *      *      *
-;       **********************
-;
-; Adjacency codes are 4-bit numbers (for good reason),
-; with each bit indicating adjacency along its respective direction:
-;
-;     UP  RIGHT  DOWN  LEFT -> binary -> CODE (decimal)
-;     -     -     -     -      0000      0
-;     X     -     -     -      0001      1
-;     -     X     -     -      0010      2
-;     X     X     -     -      0011      3  <-- shown in above example
-;     -     -     X     -      0100      4  <-- shown in above example
-;     X     -     X     -      0101      5
-;     -     X     X     -      0110      6
-;     X     X     X     -      0111      7
-;     -     -     -     X      1000      8  <-- shown in above example
-;     X     -     -     X      1001      9
-;     -     X     -     X      1010      10 <-- shown in above example
-;     X     X     -     X      1011      11
-;     -     -     X     X      1100      12
-;     X     -     X     X      1101      13
-;     -     X     X     X      1110      14
-;     X     X     X     X      1111      15 (not possible in tetris)
-; 
-; The revelation here is that SIMPLE ROTATION of the piece
-; is achieved by applying this function over each coordinate:
-;
-;     Rotate( [X Y A] )  -->   [ -Y X (4 bit rotate of A) ]
-; 
 
 (def pieces
   {:I {:name :I
+       :r 0
        :coords [
-        [-1  0  2] [ 0  0 10] [ 1  0 10] [ 2  0  8]
-        ]}
+                [-1  0  2] [ 0  0 10] [ 1  0 10] [ 2  0  8]]}
 
    :L {:name :L
+       :r 0
        :coords [
-                              [ 1 -1  4]
-        [-1  0  2] [ 0  0 10] [ 1  0  9]
-        ]}
+                [ 1 -1  4]
+                [-1  0  2] [ 0  0 10] [ 1  0  9]]}
 
    :J {:name :J
+       :r 0
        :coords [
-        [-1 -1  4]
-        [-1  0  3] [ 0  0 10] [ 1  0  8]
-        ]}
+                [-1 -1  4]
+                [-1  0  3] [ 0  0 10] [ 1  0  8]]}
 
    :S {:name :S
+       :r 0
        :coords [
-                   [ 0 -1  6] [ 1 -1  8]
-        [-1  0  2] [ 0  0  9]
-        ]}
+                [ 0 -1  6] [ 1 -1  8]
+                [-1  0  2] [ 0  0  9]]}
 
    :Z {:name :Z
+       :r 0
        :coords [
-        [-1 -1  2] [ 0 -1 12]
-                   [ 0  0  3] [ 1  0  8]
-        ]}
+                [-1 -1  2] [ 0 -1 12]
+                [ 0  0  3] [ 1  0  8]]}
 
    :O {:name :O
+       ;;doesnt rotate
        :coords [
-                   [ 0 -1  6] [ 1 -1 12]
-                   [ 0  0  3] [ 1  0  9]
-        ]}
+                [ 0 -1  6] [ 1 -1 12]
+                [ 0  0  3] [ 1  0  9]]}
 
    :T {:name :T
+       :r 0
        :coords [
-                   [ 0 -1  4]
-        [-1  0  2] [ 0  0 11] [ 1  0  8]
-        ]}})
+                [ 0 -1  4]
+                [-1  0  2] [ 0  0 11] [ 1  0  8]]}})
+
 
 (defn get-rand-diff-piece
   "Return a random piece different from the given one."
@@ -121,7 +121,9 @@
     piece
     (let [br (fn [a] (+ (* 2 (mod a 8)) (/ (bit-and a 8) 8)))
           new-coords (map (fn [[x y a]] [(- y) x (br a)]) (:coords piece))]
-      (assoc piece :coords new-coords))))
+      (-> piece
+          (assoc :coords new-coords)
+          (update :r inc)))))
 
 (defn piece-value
   "Creates a cell value from the given piece type and adjacency."
@@ -146,7 +148,7 @@
 ;; Board.
 ;;------------------------------------------------------------
 
-; conventions for standard board size
+;; conventions for standard board size
 (def n-rows 22)
 (def n-cols 10)
 (def rows-cutoff 1.5)
@@ -157,11 +159,11 @@
   "Creates a vector of random tiles with no adjacency."
   []
   (vec
-    (for [x (range n-cols)]
-      (str (name (nth (keys pieces) (rand-int 7))) 0))))
+   (for [x (range n-cols)]
+     (str (name (nth (keys pieces) (rand-int 7))) 0))))
 (def empty-board (vec (repeat n-rows empty-row)))
 
-; The starting position of all pieces.
+;; The starting position of all pieces.
 (def start-position [4 2])
 
 (defn coord-inside?
@@ -198,7 +200,7 @@
 (defn write-coord-to-board
   "Returns a new board with a value written to the given relative coordinate and position."
   [[cx cy ca] x y value board]
-    (write-to-board (+ cx x) (+ cy y) (piece-value value ca) board))
+  (write-to-board (+ cx x) (+ cy y) (piece-value value ca) board))
 
 (defn write-coords-to-board
   "Returns a new board with a value written to the given relative coordinates and position."
@@ -229,8 +231,8 @@
   "Returns a new board with the given rows highlighted."
   [active-rows board]
   (vec (map-indexed
-   (fn [i row]
-     (if (active-rows i) highlighted-row row)) board)))
+        (fn [i row]
+          (if (active-rows i) highlighted-row row)) board)))
 
 (defn collapse-rows
   "Returns a new board with the given row indices collapsed."
@@ -337,11 +339,11 @@
   "Returns a small board for drawing the next piece."
   ([] (next-piece-board nil))
   ([piece]
-    (let [board [[0 0 0 0]
-                 [0 0 0 0]
-                 [0 0 0 0]
-                 [0 0 0 0]]]
-      (if piece
-        (write-piece-to-board piece 1 2 board)
-        board))))
+   (let [board [[0 0 0 0]
+                [0 0 0 0]
+                [0 0 0 0]
+                [0 0 0 0]]]
+     (if piece
+       (write-piece-to-board piece 1 2 board)
+       board))))
 
